@@ -39,7 +39,7 @@ class OriginDataset(Dataset):
 
 def run():
     # Config
-    origin_dir = "C:/Users/chenc/OneDrive - Imperial College London/Documents/student stuff/fyp_Y4/pics/shape/none"
+    origin_dir = "C:/Users/chenc/OneDrive - Imperial College London/Documents/student stuff/fyp_Y4/pics/none"
     batch_size = 16
     epochs = 15
     lr = 1e-4
