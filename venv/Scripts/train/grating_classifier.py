@@ -464,13 +464,13 @@ class GratingClassifier:
         sns.heatmap(best_cm, annot=True, fmt='d', cmap='Blues',
                     xticklabels=labels_str,
                     yticklabels=labels_str)
-        plt.title(f'Confusion Matrix - {best_model_name}\nAccuracy: {best_results["accuracy"]:.4f}')
+        plt.title(f'Grating (flat) - Confusion Matrix - {best_model_name}\nAccuracy: {best_results["accuracy"]:.4f}')
         plt.ylabel('True Grating Resolution')
         plt.xlabel('Predicted Grating Resolution')
         plt.tight_layout()
         plt.savefig(f'grating_confusionMatrix_{best_model_name.replace(" ", "_")}.png')
         plt.close()
-        print(f"Saved as: grating_confusionMatrix_{best_model_name.replace(' ', '_')}.png")
+        print(f"Saved as: flatGrating_confusionMatrix_{best_model_name.replace(' ', '_')}.png")
 
         best_model = self.models[best_model_name]
         self.visualize_grating_predictions(
@@ -484,7 +484,7 @@ class GratingClassifier:
 # Usage example
 if __name__ == "__main__":
     # Initialize classifier with your base path
-    base_path = r"C:\Users\chenc\OneDrive - Imperial College London\Documents\student stuff\fyp_Y4\pics\gratingBoard"
+    base_path = r"C:\Users\chenc\OneDrive - Imperial College London\Documents\student stuff\fyp_Y4\pics\gratingBoard\grating_0"
 
     classifier = GratingClassifier(base_path)
 

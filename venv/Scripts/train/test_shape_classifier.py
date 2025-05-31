@@ -74,7 +74,7 @@ def test_shape_classifier(model_path, test_data_dir, batch_size=32):
     plt.ylabel('True')
     plt.title('Confusion Matrix')
     plt.savefig('test_confusion_matrix.png')
-    print("Confusion matrix saved as 'test_confusion_matrix.png'")
+    print("Confusion matrix saved as 'testCurved_confusion_matrix.png'")
 
     # Plot some example predictions
     def visualize_predictions(test_loader, model, class_names, num_examples_per_class=3):
@@ -112,7 +112,7 @@ def test_shape_classifier(model_path, test_data_dir, batch_size=32):
 
         plt.tight_layout()
         plt.savefig('shape_predictions.png')
-        print("Shape predictions saved as 'shape_predictions.png'")
+        print("Shape predictions saved as 'objCurved_predictions.png'")
 
     # Run visualization
     visualize_predictions(test_loader, model, class_names_sorted)
@@ -123,7 +123,7 @@ def test_shape_classifier(model_path, test_data_dir, batch_size=32):
 if __name__ == "__main__":
     # Configuration
     model_path = "models/shape_model.pt"
-    test_data_dir = "C:/Users/chenc/OneDrive - Imperial College London/Documents/student stuff/fyp_Y4/pics/shape"
+    test_data_dir = "C:/Users/chenc/OneDrive - Imperial College London/Documents/student stuff/fyp_Y4/pics/shape/shape_3mm"
 
     # Run test
     test_shape_classifier(model_path, test_data_dir)

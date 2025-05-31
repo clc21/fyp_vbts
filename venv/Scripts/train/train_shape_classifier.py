@@ -11,7 +11,7 @@ from sklearn.metrics import accuracy_score, classification_report, confusion_mat
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-
+# train_shape_classifier.py
 def run():
     # Set random seed for reproducibility
     seed = 42
@@ -20,12 +20,12 @@ def run():
     np.random.seed(seed)
 
     # Configuration
-    root_dir = "C:/Users/chenc/OneDrive - Imperial College London/Documents/student stuff/fyp_Y4/pics/shape"
+    root_dir = "C:/Users/chenc/OneDrive - Imperial College London/Documents/student stuff/fyp_Y4/pics/shape/shape_3mm"
     batch_size = 32
-    epochs = 15
+    epochs = 11
     lr = 1e-4
     class_names = ['circle', 'ring', 'triangle', 'star']
-    samples_per_class = 100  # Select 100 images from each class
+    samples_per_class = 150  # Select 150 images from each class
 
     # Transformations
     transform = transforms.Compose([
@@ -177,36 +177,25 @@ def run():
     print("\nClassification Report:")
     print(classification_report(all_labels, all_preds, target_names=class_names_sorted))
 
-    # Confusion matrix
+    # Confusion matrix with percentages
     cm = confusion_matrix(all_labels, all_preds)
+
+    # Calculate percentages for each cell
+    cm_percent = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis] * 100
+
+    # Create labels that show both count and percentage
+    labels = np.empty_like(cm, dtype=object)
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            labels[i, j] = f'{cm[i, j]}\n({cm_percent[i, j]:.1f}%)'
+
     plt.figure(figsize=(10, 8))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=class_names_sorted, yticklabels=class_names_sorted)
+    sns.heatmap(cm, annot=labels, fmt='', cmap='Blues',
+                xticklabels=class_names_sorted, yticklabels=class_names_sorted)
     plt.xlabel('Predicted')
     plt.ylabel('True')
-    plt.title('Confusion Matrix')
-    plt.savefig('confusion_matrix.png')
-
-    # Plot training and validation metrics
-    plt.figure(figsize=(12, 5))
-
-    plt.subplot(1, 2, 1)
-    plt.plot(range(1, epochs + 1), train_losses, 'b-', label='Training Loss')
-    plt.plot(range(1, epochs + 1), val_losses, 'r-', label='Validation Loss')
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-    plt.legend()
-    plt.title('Training and Validation Loss')
-
-    plt.subplot(1, 2, 2)
-    plt.plot(range(1, epochs + 1), train_accuracies, 'b-', label='Training Accuracy')
-    plt.plot(range(1, epochs + 1), val_accuracies, 'r-', label='Validation Accuracy')
-    plt.xlabel('Epoch')
-    plt.ylabel('Accuracy (%)')
-    plt.legend()
-    plt.title('Training and Validation Accuracy')
-
-    plt.tight_layout()
-    plt.savefig('training_metrics.png')
+    plt.title('Obj Detection (Flat) - Confusion Matrix')
+    plt.savefig('trainObjCurved_confusion_matrix.png', dpi=300, bbox_inches='tight')
 
     return model
 
