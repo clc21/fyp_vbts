@@ -4,15 +4,37 @@ import torch.nn as nn
 import numpy as np
 import matplotlib.pyplot as plt
 from torchvision import datasets, transforms
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 from model_defs import ShapeClassifier
 from sklearn.metrics import classification_report, confusion_matrix
 import seaborn as sns
+import random
 
 
-def test_shape_classifier(model_path, test_data_dir, batch_size=32):
+def test_shape_classifier(model_path, test_data_dir, batch_size=32, data_folder="shape_0", samples_per_class=100):
+    """
+    Test shape classifier on specified dataset with limited samples per class
+
+    Args:
+        model_path: Path to trained model
+        test_data_dir: Base directory containing shape folders
+        batch_size: Batch size for testing
+        data_folder: Specific folder to test ("shape_0" or "shape_3mm")
+        samples_per_class: Maximum number of samples per class to test (default 100)
+    """
+    # Set random seed for reproducible sampling
+    random.seed(42)
+
     # Configuration
     class_names = ['circle', 'ring', 'triangle', 'star']
+    full_test_dir = os.path.join(test_data_dir, data_folder)
+
+    if not os.path.exists(full_test_dir):
+        raise ValueError(f"Test directory not found: {full_test_dir}")
+
+    print(f"Testing on dataset: {data_folder}")
+    print(f"Test directory: {full_test_dir}")
+    print(f"Maximum samples per class: {samples_per_class}")
 
     # Transformations (same as training)
     transform = transforms.Compose([
@@ -22,8 +44,33 @@ def test_shape_classifier(model_path, test_data_dir, batch_size=32):
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
 
-    # Load test dataset
-    test_dataset = datasets.ImageFolder(root=test_data_dir, transform=transform)
+    # Load full test dataset
+    full_test_dataset = datasets.ImageFolder(root=full_test_dir, transform=transform)
+
+    # Get indices for each class and select samples_per_class from each
+    class_indices = {}
+    for class_name in class_names:
+        class_idx = full_test_dataset.class_to_idx.get(class_name)
+        if class_idx is not None:
+            class_indices[class_name] = [i for i, (_, label) in enumerate(full_test_dataset.samples) if
+                                         label == class_idx]
+
+    # Select samples_per_class from each class
+    selected_indices = []
+    for class_name in class_names:
+        indices = class_indices.get(class_name, [])
+        if indices:
+            if len(indices) > samples_per_class:
+                selected = random.sample(indices, samples_per_class)
+                print(f"{class_name}: selected {samples_per_class} from {len(indices)} samples")
+            else:
+                selected = indices
+                print(f"{class_name}: using all {len(indices)} samples (fewer than {samples_per_class})")
+            selected_indices.extend(selected)
+
+    # Create subset with balanced classes
+    test_dataset = Subset(full_test_dataset, selected_indices)
+
     test_loader = DataLoader(test_dataset, batch_size=batch_size)
 
     # Load model
@@ -60,21 +107,38 @@ def test_shape_classifier(model_path, test_data_dir, batch_size=32):
     print(f"Test Accuracy: {accuracy:.2f}%")
 
     # Detailed metrics
-    idx_to_class = {v: k for k, v in test_dataset.class_to_idx.items()}
+    idx_to_class = {v: k for k, v in full_test_dataset.class_to_idx.items()}
     class_names_sorted = [idx_to_class[i] for i in range(len(class_names))]
 
     print("\nClassification Report:")
     print(classification_report(all_labels, all_preds, target_names=class_names_sorted))
 
-    # Confusion matrix
+    # Confusion matrix with accuracy
     cm = confusion_matrix(all_labels, all_preds)
+
+    # Calculate percentages for each cell
+    cm_percent = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis] * 100
+
+    # Create labels that show both count and percentage
+    labels = np.empty_like(cm, dtype=object)
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            labels[i, j] = f'{cm[i, j]}\n({cm_percent[i, j]:.1f}%)'
+
     plt.figure(figsize=(10, 8))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=class_names_sorted, yticklabels=class_names_sorted)
+    sns.heatmap(cm, annot=labels, fmt='', cmap='Blues',
+                xticklabels=class_names_sorted, yticklabels=class_names_sorted)
     plt.xlabel('Predicted')
     plt.ylabel('True')
-    plt.title('Confusion Matrix')
-    plt.savefig('test_confusion_matrix.png')
-    print("Confusion matrix saved as 'testCurved_confusion_matrix.png'")
+
+    # Determine surface type from folder name
+    surface_type = "Flat" if data_folder == "shape_0" else "Curved (3mm)"
+    plt.title(f'Object Detection ({surface_type}) - Test Confusion Matrix\nAccuracy: {accuracy:.2f}%')
+
+    filename = f'test_obj_{data_folder}_confusion_matrix.png'
+    plt.savefig(filename, dpi=300, bbox_inches='tight')
+    print(f"Confusion matrix saved as '{filename}'")
+    plt.close()
 
     # Plot some example predictions
     def visualize_predictions(test_loader, model, class_names, num_examples_per_class=3):
@@ -111,8 +175,11 @@ def test_shape_classifier(model_path, test_data_dir, batch_size=32):
                     idx += 1
 
         plt.tight_layout()
-        plt.savefig('shape_predictions.png')
-        print("Shape predictions saved as 'objCurved_predictions.png'")
+        surface_type = "Flat" if data_folder == "shape_0" else "Curved"
+        filename = f'obj_{data_folder}_predictions.png'
+        plt.savefig(filename, dpi=300, bbox_inches='tight')
+        print(f"Shape predictions saved as '{filename}'")
+        plt.close()
 
     # Run visualization
     visualize_predictions(test_loader, model, class_names_sorted)
@@ -121,9 +188,27 @@ def test_shape_classifier(model_path, test_data_dir, batch_size=32):
 
 
 if __name__ == "__main__":
-    # Configuration
-    model_path = "models/shape_model.pt"
-    test_data_dir = "C:/Users/chenc/OneDrive - Imperial College London/Documents/student stuff/fyp_Y4/pics/shape/shape_3mm"
+    # Test both datasets with 100 samples each
+    base_test_dir = "C:/Users/chenc/OneDrive - Imperial College London/Documents/student stuff/fyp_Y4/pics/shape"
 
-    # Run test
-    test_shape_classifier(model_path, test_data_dir)
+    for folder in ["shape_0", "shape_3mm"]:
+        print(f"\n{'=' * 60}")
+        print(f"Testing Shape Classifier for {folder}")
+        print(f"{'=' * 60}")
+
+        model_path = f"models/shape_model_{folder}.pt"
+
+        if os.path.exists(model_path):
+            try:
+                accuracy, _, _, _ = test_shape_classifier(
+                    model_path=model_path,
+                    test_data_dir=base_test_dir,
+                    data_folder=folder,
+                    samples_per_class=100  # Limit to 100 samples per class
+                )
+                print(f"Completed testing for {folder} with accuracy: {accuracy:.2f}%")
+            except Exception as e:
+                print(f"Error testing {folder}: {e}")
+        else:
+            print(f"Model not found: {model_path}")
+        print("\n")

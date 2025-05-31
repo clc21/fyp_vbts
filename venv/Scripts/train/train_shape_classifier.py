@@ -11,8 +11,16 @@ from sklearn.metrics import accuracy_score, classification_report, confusion_mat
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-# train_shape_classifier.py
-def run():
+
+def run(data_folder="shape_0", epochs=11, samples_per_class=100):
+    """
+    Train shape classifier for a specific dataset folder
+
+    Args:
+        data_folder: "shape_0" or "shape_3mm"
+        epochs: Number of training epochs
+        samples_per_class: Number of samples per class to use
+    """
     # Set random seed for reproducibility
     seed = 42
     torch.manual_seed(seed)
@@ -20,12 +28,18 @@ def run():
     np.random.seed(seed)
 
     # Configuration
-    root_dir = "C:/Users/chenc/OneDrive - Imperial College London/Documents/student stuff/fyp_Y4/pics/shape/shape_3mm"
+    base_dir = "C:/Users/chenc/OneDrive - Imperial College London/Documents/student stuff/fyp_Y4/pics/shape"
+    root_dir = os.path.join(base_dir, data_folder)
+
+    if not os.path.exists(root_dir):
+        raise ValueError(f"Data directory not found: {root_dir}")
+
     batch_size = 32
-    epochs = 11
     lr = 1e-4
     class_names = ['circle', 'ring', 'triangle', 'star']
-    samples_per_class = 150  # Select 150 images from each class
+
+    print(f"Training on dataset: {data_folder}")
+    print(f"Data directory: {root_dir}")
 
     # Transformations
     transform = transforms.Compose([
@@ -145,8 +159,9 @@ def run():
 
     # Save model
     os.makedirs("models", exist_ok=True)
-    torch.save(model.state_dict(), "models/shape_model.pt")
-    print("Shape classifier trained and saved.")
+    model_filename = f"shape_model_{data_folder}.pt"
+    torch.save(model.state_dict(), f"models/{model_filename}")
+    print(f"Shape classifier trained and saved as {model_filename}")
 
     # Evaluate on test set
     model.eval()
@@ -177,7 +192,7 @@ def run():
     print("\nClassification Report:")
     print(classification_report(all_labels, all_preds, target_names=class_names_sorted))
 
-    # Confusion matrix with percentages
+    # Confusion matrix with percentages and overall accuracy
     cm = confusion_matrix(all_labels, all_preds)
 
     # Calculate percentages for each cell
@@ -194,11 +209,28 @@ def run():
                 xticklabels=class_names_sorted, yticklabels=class_names_sorted)
     plt.xlabel('Predicted')
     plt.ylabel('True')
-    plt.title('Obj Detection (Flat) - Confusion Matrix')
-    plt.savefig('trainObjCurved_confusion_matrix.png', dpi=300, bbox_inches='tight')
 
-    return model
+    # Determine surface type from folder name
+    surface_type = "Flat" if data_folder == "shape_0" else "Curved (3mm)"
+    plt.title(f'Object Detection ({surface_type}) - Confusion Matrix\nAccuracy: {test_accuracy:.2f}%')
+
+    filename = f'train_obj_{data_folder}_confusion_matrix.png'
+    plt.savefig(filename, dpi=300, bbox_inches='tight')
+    print(f"Confusion matrix saved as '{filename}'")
+    plt.close()
+
+    return model, test_accuracy
 
 
 if __name__ == "__main__":
-    run()
+    # Train on both datasets
+    for folder in ["shape_0", "shape_3mm"]:
+        print(f"\n{'=' * 60}")
+        print(f"Training Shape Classifier for {folder}")
+        print(f"{'=' * 60}")
+        try:
+            model, accuracy = run(data_folder=folder)
+            print(f"Completed training for {folder} with accuracy: {accuracy:.2f}%")
+        except Exception as e:
+            print(f"Error training on {folder}: {e}")
+        print("\n")

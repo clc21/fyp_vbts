@@ -2,6 +2,7 @@
 
 import os
 import argparse
+import pickle
 from train.train_shape_classifier import run as run_shape_classifier
 from train.train_origin_regressor import run as run_origin_regressor
 from train.test_shape_classifier import test_shape_classifier
@@ -10,24 +11,28 @@ from train.grating_classifier import GratingClassifier
 
 def main():
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description='Train and test shape classification models')
+    parser = argparse.ArgumentParser(description='Train and test shape classification and grating models')
     parser.add_argument('--mode', type=str, default='all',
                         choices=['all', 'train_shape', 'train_origin', 'test_shape', 'train_grating', 'test_grating'],
                         help='Mode to run: all, train_shape, train_origin, test_shape, train_grating, or test_grating')
-    parser.add_argument('--model_path', type=str, default='models/shape_model.pt',
-                        help='Path to the trained shape model for testing')
-    parser.add_argument('--test_dir', type=str,
+    parser.add_argument('--shape_dir', type=str,
                         default="C:/Users/chenc/OneDrive - Imperial College London/Documents/student stuff/fyp_Y4/pics/shape",
-                        help='Directory containing test data')
+                        help='Directory containing shape data (should contain shape_0 and shape_3mm folders)')
     parser.add_argument('--grating_dir', type=str,
                         default="C:/Users/chenc/OneDrive - Imperial College London/Documents/student stuff/fyp_Y4/pics/gratingBoard",
-                        help='Directory containing grating board images')
+                        help='Directory containing grating board images (should contain grating_0 and grating_3mm folders)')
     parser.add_argument('--max_images_per_folder', type=int, default=100,
                         help='Maximum number of images to load per grating folder')
     parser.add_argument('--test_size', type=float, default=0.2,
                         help='Proportion of data to use for testing (0.0-1.0)')
     parser.add_argument('--grating_test_image', type=str, default=None,
                         help='Path to a single grating image for testing/prediction')
+    parser.add_argument('--grating_folder', type=str, default='both',
+                        choices=['grating_0', 'grating_3mm', 'both'],
+                        help='Which grating dataset to use: grating_0, grating_3mm, or both')
+    parser.add_argument('--shape_folder', type=str, default='both',
+                        choices=['shape_0', 'shape_3mm', 'both'],
+                        help='Which shape dataset to use: shape_0, shape_3mm, or both')
 
     args = parser.parse_args()
 
@@ -38,7 +43,26 @@ def main():
         print("\n" + "=" * 50)
         print("Running shape classifier training...")
         print("=" * 50)
-        shape_model = run_shape_classifier()
+
+        # Determine which shape folders to train on
+        shape_folders = []
+        if args.shape_folder == 'both':
+            shape_folders = ['shape_0', 'shape_3mm']
+        else:
+            shape_folders = [args.shape_folder]
+
+        # Train on specified datasets
+        for folder in shape_folders:
+            print(f"\n{'=' * 60}")
+            print(f"Training Shape Classifier for {folder}")
+            print(f"{'=' * 60}")
+            try:
+                model, accuracy = run_shape_classifier(data_folder=folder)
+                print(f"Completed training for {folder} with accuracy: {accuracy:.2f}%")
+            except Exception as e:
+                print(f"Error training on {folder}: {e}")
+            print("\n")
+
         print("Shape classifier training completed!")
 
     if args.mode in ['all', 'train_origin']:
@@ -52,15 +76,36 @@ def main():
         print("\n" + "=" * 50)
         print("Testing shape classifier...")
         print("=" * 50)
-        if os.path.exists(args.model_path):
-            accuracy, _, _, _ = test_shape_classifier(
-                model_path=args.model_path,
-                test_data_dir=args.test_dir
-            )
-            print(f"Shape classifier testing completed with accuracy: {accuracy:.2f}%")
+
+        # Determine which shape folders to test on
+        shape_folders = []
+        if args.shape_folder == 'both':
+            shape_folders = ['shape_0', 'shape_3mm']
         else:
-            print(f"Error: Model file not found at {args.model_path}")
-            print("Please train the model first or specify the correct path.")
+            shape_folders = [args.shape_folder]
+
+        # Test on specified datasets
+        for folder in shape_folders:
+            print(f"\n{'=' * 60}")
+            print(f"Testing Shape Classifier for {folder}")
+            print(f"{'=' * 60}")
+
+            model_path = f"models/shape_model_{folder}.pt"
+
+            if os.path.exists(model_path):
+                try:
+                    accuracy, _, _, _ = test_shape_classifier(
+                        model_path=model_path,
+                        test_data_dir=args.shape_dir,
+                        data_folder=folder
+                    )
+                    print(f"Completed testing for {folder} with accuracy: {accuracy:.2f}%")
+                except Exception as e:
+                    print(f"Error testing {folder}: {e}")
+            else:
+                print(f"Model not found: {model_path}")
+                print("Please train the model first.")
+            print("\n")
 
     if args.mode in ['all', 'train_grating']:
         print("\n" + "=" * 50)
@@ -71,85 +116,135 @@ def main():
             print(f"Error: Grating directory not found at {args.grating_dir}")
             print("Please specify the correct path using --grating_dir")
         else:
-            # Initialize and train grating classifier
-            grating_classifier = GratingClassifier(args.grating_dir)
-
-            # Run the full pipeline
-            results = grating_classifier.run_full_pipeline(
-                max_images_per_folder=args.max_images_per_folder,
-                test_size=args.test_size
-            )
-
-            if results:
-                print("Grating classifier training completed!")
-
-                # Save the trained classifier (optional - you might want to implement this)
-                # This would require adding save/load methods to GratingClassifier
-                try:
-                    import pickle
-                    with open('models/grating_classifier.pkl', 'wb') as f:
-                        pickle.dump(grating_classifier, f)
-                    print("Grating classifier saved to models/grating_classifier.pkl")
-                except Exception as e:
-                    print(f"Warning: Could not save grating classifier: {e}")
+            # Determine which grating folders to train on
+            grating_folders = []
+            if args.grating_folder == 'both':
+                grating_folders = ['grating_0', 'grating_3mm']
             else:
-                print("Grating classifier training failed!")
+                grating_folders = [args.grating_folder]
 
-    if args.mode == 'test_grating':
+            # Train on specified datasets
+            for folder in grating_folders:
+                print(f"\n{'=' * 60}")
+                print(f"Training Grating Classifier for {folder}")
+                print(f"{'=' * 60}")
+
+                try:
+                    # Initialize and train grating classifier
+                    grating_classifier = GratingClassifier(args.grating_dir, data_folder=folder)
+
+                    # Run the full pipeline
+                    results, accuracy = grating_classifier.run_full_pipeline(
+                        max_images_per_folder=args.max_images_per_folder,
+                        test_size=args.test_size
+                    )
+
+                    if results:
+                        print(f"Grating classifier training for {folder} completed with accuracy: {accuracy:.2f}%!")
+
+                        # Save the trained classifier
+                        try:
+                            model_filename = f'grating_classifier_{folder}.pkl'
+                            model_path = f'models/{model_filename}'
+
+                            with open(model_path, 'wb') as f:
+                                pickle.dump(grating_classifier, f)
+
+                            print(f"Grating classifier model saved as: {model_path}")
+
+                        except Exception as e:
+                            print(f"Error saving grating classifier model for {folder}: {e}")
+                    else:
+                        print(f"Failed to train grating classifier for {folder}")
+
+                except Exception as e:
+                    print(f"Error training grating classifier for {folder}: {e}")
+                print("\n")
+
+            print("Grating classifier training completed!")
+
+    if args.mode in ['all', 'test_grating']:
         print("\n" + "=" * 50)
         print("Testing grating classifier...")
         print("=" * 50)
 
-        # Load trained grating classifier
-        classifier_path = 'models/grating_classifier.pkl'
-        if os.path.exists(classifier_path):
-            try:
-                import pickle
-                with open(classifier_path, 'rb') as f:
-                    grating_classifier = pickle.load(f)
-                print("Loaded trained grating classifier")
-
-                if args.grating_test_image:
-                    # Test single image
-                    if os.path.exists(args.grating_test_image):
-                        print(f"Predicting grating resolution for: {args.grating_test_image}")
-                        try:
-                            predicted_res, probabilities = grating_classifier.predict_single_image(
-                                args.grating_test_image
-                            )
-                            print(f"Predicted resolution: {predicted_res}")
-                            print("Prediction probabilities:")
-                            for res, prob in sorted(probabilities.items()):
-                                print(f"  {res}: {prob:.4f} ({prob * 100:.2f}%)")
-                        except Exception as e:
-                            print(f"Error predicting image: {e}")
-                    else:
-                        print(f"Error: Test image not found at {args.grating_test_image}")
-                else:
-                    print("No test image specified. Use --grating_test_image to test a specific image.")
-                    print("Example: python main.py --mode test_grating --grating_test_image path/to/image.jpg")
-
-            except Exception as e:
-                print(f"Error loading grating classifier: {e}")
-                print("Please train the grating classifier first using --mode train_grating")
+        # Determine which grating folders to test on
+        grating_folders = []
+        if args.grating_folder == 'both':
+            grating_folders = ['grating_0', 'grating_3mm']
         else:
-            print(f"Error: Trained grating classifier not found at {classifier_path}")
-            print("Please train the grating classifier first using --mode train_grating")
+            grating_folders = [args.grating_folder]
+
+        # Test on specified datasets
+        for folder in grating_folders:
+            print(f"\n{'=' * 60}")
+            print(f"Testing Grating Classifier for {folder}")
+            print(f"{'=' * 60}")
+
+            model_path = f"models/grating_classifier_{folder}.pkl"
+
+            if os.path.exists(model_path):
+                try:
+                    # Load the trained grating classifier
+                    with open(model_path, 'rb') as f:
+                        grating_classifier = pickle.load(f)
+
+                    # Test with a single image if provided
+                    if args.grating_test_image:
+                        if os.path.exists(args.grating_test_image):
+                            print(f"Testing single image: {args.grating_test_image}")
+                            # Assuming the GratingClassifier has a predict method
+                            if hasattr(grating_classifier, 'predict_single_image'):
+                                prediction, probabilities = grating_classifier.predict_single_image(args.grating_test_image)
+                                print(f"Prediction result: {prediction}")
+                                print(f"Probabilities: {probabilities}")
+                            else:
+                                print("GratingClassifier does not have a predict_single_image method")
+                        else:
+                            print(f"Test image not found: {args.grating_test_image}")
+                    else:
+                        # Test on the dataset (if the classifier has a test method)
+                        if hasattr(grating_classifier, 'test') or hasattr(grating_classifier, 'evaluate'):
+                            print("Running evaluation on test dataset...")
+                            # You may need to implement this based on your GratingClassifier structure
+                            print("Test evaluation method not implemented in GratingClassifier")
+                        else:
+                            print("No test method available in GratingClassifier")
+                            print("Use --grating_test_image to test a single image")
+
+                    print(f"Completed testing for {folder}")
+
+                except Exception as e:
+                    print(f"Error testing grating classifier for {folder}: {e}")
+            else:
+                print(f"Grating classifier model not found: {model_path}")
+                print("Please train the grating model first using --mode train_grating")
+            print("\n")
+
+        print("Grating classifier testing completed!")
+
+    print("\n" + "=" * 50)
+    print("All operations completed!")
+    print("=" * 50)
 
 
 if __name__ == "__main__":
     main()
 
-
 # Train all models including grating classifier
 # python main.py --mode all
 
-# Train only grating classifier with custom settings
-# python main.py --mode train_grating --max_images_per_folder 50 --test_size 0.3
+# Train only shape classifiers for both datasets
+# python main.py --mode train_shape --shape_folder both
 
-# Test grating classifier on a single image
+# Train only grating classifier for specific dataset
+# python main.py --mode train_grating --grating_folder grating_0
+
+# Test shape classifier on specific dataset
+# python main.py --mode test_shape --shape_folder shape_3mm
+
+# Test grating classifier with a single image
 # python main.py --mode test_grating --grating_test_image "path/to/test/image.jpg"
 
-# Train grating classifier with custom directory
-# python main.py --mode train_grating --grating_dir "path/to/grating/images"
-
+# Use custom directories
+# python main.py --shape_dir "path/to/shape/folder" --grating_dir "path/to/grating/folder"

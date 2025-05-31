@@ -15,14 +15,17 @@ warnings.filterwarnings('ignore')
 
 
 class GratingClassifier:
-    def __init__(self, base_path):
+    def __init__(self, base_path, data_folder="grating_0"):
         """
         Initialize the grating classifier with KNN models
 
         Args:
             base_path (str): Base path to the grating board images
+            data_folder (str): Specific folder ("grating_0" or "grating_3mm")
         """
         self.base_path = Path(base_path)
+        self.data_folder = data_folder
+        self.full_path = self.base_path / data_folder
         self.folder_mapping = {
             '05': 0.5,
             '1': 1.0,
@@ -41,11 +44,17 @@ class GratingClassifier:
 
     def load_images(self, max_images_per_folder=100, random_seed=42):
         """Load exactly max_images_per_folder images from each folder"""
-        print(f"Loading up to {max_images_per_folder} images from each folder...")
+        print(f"Loading images from dataset: {self.data_folder}")
+        print(f"Full path: {self.full_path}")
+        print(f"Loading up to {max_images_per_folder} images from each resolution folder...")
+
+        if not self.full_path.exists():
+            raise ValueError(f"Data directory not found: {self.full_path}")
+
         np.random.seed(random_seed)  # For reproducible selection
 
         for folder_name, resolution in self.folder_mapping.items():
-            folder_path = self.base_path / folder_name
+            folder_path = self.full_path / folder_name
 
             if not folder_path.exists():
                 print(f"Warning: Folder {folder_path} does not exist")
@@ -362,12 +371,10 @@ class GratingClassifier:
 
         return predicted_resolution, prob_dict
 
-    def visualize_grating_predictions(model, X_test, y_test, int_to_label, scaler, images, labels):
+    def visualize_grating_predictions(self, best_model, X_test, y_test, int_to_label):
         """
         Visualize 1 prediction per resolution class (row=1, cols=6)
         """
-        model.eval()
-
         # Convert back to float labels
         unique_classes = sorted(set(y_test))
         plotted_classes = set()
@@ -375,34 +382,47 @@ class GratingClassifier:
         fig = plt.figure(figsize=(4 * len(unique_classes), 4))
 
         idx = 1
+        test_images_used = []
+
+        # Find original images corresponding to test set
         for i in range(len(X_test)):
             label = y_test[i]
             if label in plotted_classes:
                 continue  # only show one image per class
 
             x = X_test[i].reshape(1, -1)
-            prediction = model.predict(x)[0]
+            prediction = best_model.predict(x)[0]
 
-            # Get the original image for visualization
-            original_img = images[i]
+            # For visualization, we'll use a representative image from the class
+            # Since we don't have direct mapping back to original images from test set,
+            # we'll find an image from the same class in our loaded images
+            true_resolution = int_to_label[label]
+            class_images = [img for i, img in enumerate(self.images) if self.labels[i] == true_resolution]
 
-            ax = fig.add_subplot(1, len(unique_classes), idx, xticks=[], yticks=[])
-            ax.imshow(original_img, cmap='gray')
+            if class_images:
+                representative_img = class_images[0]  # Use first image of this class
 
-            true_label = int_to_label[label]
-            pred_label = int_to_label[prediction]
-            color = 'green' if true_label == pred_label else 'red'
-            ax.set_title(f"T:{true_label}\nP:{pred_label}", color=color)
+                ax = fig.add_subplot(1, len(unique_classes), idx, xticks=[], yticks=[])
+                ax.imshow(representative_img, cmap='gray')
 
-            idx += 1
-            plotted_classes.add(label)
+                pred_label = int_to_label[prediction]
+                color = 'green' if true_resolution == pred_label else 'red'
+                ax.set_title(f"T:{true_resolution}\nP:{pred_label}", color=color)
+
+                idx += 1
+                plotted_classes.add(label)
 
             if len(plotted_classes) == len(unique_classes):
                 break  # done
 
         plt.tight_layout()
-        plt.savefig('grating_predictions.png')
-        print("Saved visualization as 'grating_predictions.png'")
+
+        # Determine surface type from folder name
+        surface_type = "Flat" if self.data_folder == "grating_0" else "Curved (3mm)"
+        filename = f'grating_{self.data_folder}_predictions.png'
+        plt.savefig(filename, dpi=300, bbox_inches='tight')
+        print(f"Saved grating predictions as '{filename}'")
+        plt.close()
 
     def run_full_pipeline(self, max_images_per_folder=100, test_size=0.2):
         """Run the complete KNN classification pipeline"""
@@ -455,44 +475,59 @@ class GratingClassifier:
             status = "✓" if true_label == pred_label else "✗"
             print(f"{status} True: {true_label}, Predicted: {pred_label}")
 
-        # Plot and save confusion matrix only for best model
+        # Plot and save confusion matrix with accuracy for best model
         print(f"\nSaving confusion matrix for best model ({best_model_name})...")
         best_cm = best_results['confusion_matrix']
         labels_str = sorted(set(best_results['true_labels']))
 
-        plt.figure(figsize=(8, 6))
-        sns.heatmap(best_cm, annot=True, fmt='d', cmap='Blues',
+        # Calculate percentages for each cell
+        cm_percent = best_cm.astype('float') / best_cm.sum(axis=1)[:, np.newaxis] * 100
+
+        # Create labels that show both count and percentage
+        annotations = np.empty_like(best_cm, dtype=object)
+        for i in range(best_cm.shape[0]):
+            for j in range(best_cm.shape[1]):
+                annotations[i, j] = f'{best_cm[i, j]}\n({cm_percent[i, j]:.1f}%)'
+
+        plt.figure(figsize=(10, 8))
+        sns.heatmap(best_cm, annot=annotations, fmt='', cmap='Blues',
                     xticklabels=labels_str,
                     yticklabels=labels_str)
-        plt.title(f'Grating (flat) - Confusion Matrix - {best_model_name}\nAccuracy: {best_results["accuracy"]:.4f}')
+
+        # Determine surface type from folder name
+        surface_type = "Flat" if self.data_folder == "grating_0" else "Curved (3mm)"
+        plt.title(
+            f'Grating Detection ({surface_type}) - Confusion Matrix - {best_model_name}\nAccuracy: {best_results["accuracy"] * 100:.2f}%')
         plt.ylabel('True Grating Resolution')
         plt.xlabel('Predicted Grating Resolution')
         plt.tight_layout()
-        plt.savefig(f'grating_confusionMatrix_{best_model_name.replace(" ", "_")}.png')
+
+        filename = f'grating_{self.data_folder}_confusion_matrix.png'
+        plt.savefig(filename, dpi=300, bbox_inches='tight')
         plt.close()
-        print(f"Saved as: flatGrating_confusionMatrix_{best_model_name.replace(' ', '_')}.png")
+        print(f"Confusion matrix saved as '{filename}'")
 
+        # Visualize predictions
         best_model = self.models[best_model_name]
-        self.visualize_grating_predictions(
-            best_model, X_test, y_test, int_to_label, self.scaler,
-            self.images, y_test  # `self.images` contains raw grayscale images
-        )
+        self.visualize_grating_predictions(best_model, X_test, y_test, int_to_label)
 
-        return results
+        return results, best_results["accuracy"]
 
 
 # Usage example
 if __name__ == "__main__":
-    # Initialize classifier with your base path
-    base_path = r"C:\Users\chenc\OneDrive - Imperial College London\Documents\student stuff\fyp_Y4\pics\gratingBoard\grating_0"
+    # Test both datasets
+    base_path = r"C:\Users\chenc\OneDrive - Imperial College London\Documents\student stuff\fyp_Y4\pics\gratingBoard"
 
-    classifier = GratingClassifier(base_path)
+    for folder in ["grating_0", "grating_3mm"]:
+        print(f"\n{'=' * 60}")
+        print(f"Training Grating Classifier for {folder}")
+        print(f"{'=' * 60}")
 
-    # Run the full pipeline (will select 100 images from each folder)
-    # Uses 80% for training, 20% for testing
-    results = classifier.run_full_pipeline(max_images_per_folder=100, test_size=0.2)
-
-    # Example of predicting a single image (uncomment and modify path as needed)
-    # predicted_res, probabilities = classifier.predict_single_image("path/to/your/test/image.jpg", "KNN (k=5)")
-    # print(f"Predicted resolution: {predicted_res}")
-    # print(f"Prediction probabilities: {probabilities}")
+        try:
+            classifier = GratingClassifier(base_path, data_folder=folder)
+            results, accuracy = classifier.run_full_pipeline(max_images_per_folder=100, test_size=0.2)
+            print(f"Completed training for {folder} with accuracy: {accuracy:.2f}%")
+        except Exception as e:
+            print(f"Error training on {folder}: {e}")
+        print("\n")
