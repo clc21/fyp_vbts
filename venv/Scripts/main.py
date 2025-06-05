@@ -3,10 +3,13 @@
 import os
 import argparse
 import pickle
+from pathlib import Path
 from train.train_shape_classifier import run as run_shape_classifier
 from train.train_origin_regressor import run as run_origin_regressor
 from train.test_shape_classifier import test_shape_classifier
-from train.grating_classifier import GratingClassifier
+from train.train_grating import GratingTrainer
+from train.test_grating import GratingTester
+from train.GratingExtractFeature import GratingFeatureExtractor
 
 
 def main():
@@ -130,35 +133,45 @@ def main():
                 print(f"{'=' * 60}")
 
                 try:
-                    # Initialize and train grating classifier
-                    grating_classifier = GratingClassifier(args.grating_dir, data_folder=folder)
+                    # Step 1: Check if features already exist, if not extract them
+                    feature_file = f"grating_{folder}_features.npy"
+                    label_file = f"grating_{folder}_labels.npy"
 
-                    # Run the full pipeline
-                    results, accuracy = grating_classifier.run_full_pipeline(
-                        max_images_per_folder=args.max_images_per_folder,
-                        test_size=args.test_size
-                    )
+                    if not (os.path.exists(feature_file) and os.path.exists(label_file)):
+                        print(f"Feature files not found for {folder}. Extracting features...")
+
+                        # Initialize feature extractor
+                        extractor = GratingFeatureExtractor(args.grating_dir, data_folder=folder)
+
+                        # Extract features
+                        features, labels = extractor.run_feature_extraction(
+                            max_images_per_folder=args.max_images_per_folder
+                        )
+
+                        if features is None:
+                            print(f"Failed to extract features for {folder}")
+                            continue
+
+                        print(f"Feature extraction completed for {folder}")
+                    else:
+                        print(f"Feature files already exist for {folder}. Skipping extraction.")
+
+                    # Step 2: Train the grating classifier
+                    print(f"Starting training for {folder}...")
+                    trainer = GratingTrainer(data_folder=folder)
+                    results = trainer.run_full_training_pipeline()
 
                     if results:
-                        print(f"Grating classifier training for {folder} completed with accuracy: {accuracy:.2f}%!")
-
-                        # Save the trained classifier
-                        try:
-                            model_filename = f'grating_classifier_{folder}.pkl'
-                            model_path = f'models/{model_filename}'
-
-                            with open(model_path, 'wb') as f:
-                                pickle.dump(grating_classifier, f)
-
-                            print(f"Grating classifier model saved as: {model_path}")
-
-                        except Exception as e:
-                            print(f"Error saving grating classifier model for {folder}: {e}")
+                        print(f"Grating classifier training for {folder} completed!")
+                        print(
+                            f"Final test accuracy: {results['test_results']['accuracy']:.4f} ({results['test_results']['accuracy'] * 100:.2f}%)")
                     else:
                         print(f"Failed to train grating classifier for {folder}")
 
                 except Exception as e:
-                    print(f"Error training grating classifier for {folder}: {e}")
+                    print(f"Error in grating pipeline for {folder}: {e}")
+                    import traceback
+                    traceback.print_exc()
                 print("\n")
 
             print("Grating classifier training completed!")
@@ -181,43 +194,51 @@ def main():
             print(f"Testing Grating Classifier for {folder}")
             print(f"{'=' * 60}")
 
-            model_path = f"models/grating_classifier_{folder}.pkl"
+            # Look for the model files that are created by the trainer
+            model_patterns = [
+                f"grating_{folder}_knn_k*_*_model.pkl",
+                f"grating_{folder}_*_model.pkl"
+            ]
 
-            if os.path.exists(model_path):
+            model_path = None
+            for pattern in model_patterns:
+                import glob
+                matches = glob.glob(pattern)
+                if matches:
+                    model_path = matches[0]  # Use the first match
+                    break
+
+            if model_path and os.path.exists(model_path):
                 try:
-                    # Load the trained grating classifier
-                    with open(model_path, 'rb') as f:
-                        grating_classifier = pickle.load(f)
+                    print(f"Found model: {model_path}")
 
-                    # Test with a single image if provided
+                    # Initialize tester
+                    tester = GratingTester(model_path, data_folder=folder)
+
+                    # Test directory path
+                    test_dir = Path(args.grating_dir) / folder
+
+                    # Run comprehensive testing
                     if args.grating_test_image:
                         if os.path.exists(args.grating_test_image):
                             print(f"Testing single image: {args.grating_test_image}")
-                            # Assuming the GratingClassifier has a predict method
-                            if hasattr(grating_classifier, 'predict_single_image'):
-                                prediction, probabilities = grating_classifier.predict_single_image(args.grating_test_image)
-                                print(f"Prediction result: {prediction}")
-                                print(f"Probabilities: {probabilities}")
-                            else:
-                                print("GratingClassifier does not have a predict_single_image method")
+                            prediction, probabilities = tester.predict_single_image(args.grating_test_image)
+                            print(f"Prediction: {prediction}")
+                            print(f"Probabilities: {probabilities}")
                         else:
                             print(f"Test image not found: {args.grating_test_image}")
                     else:
-                        # Test on the dataset (if the classifier has a test method)
-                        if hasattr(grating_classifier, 'test') or hasattr(grating_classifier, 'evaluate'):
-                            print("Running evaluation on test dataset...")
-                            # You may need to implement this based on your GratingClassifier structure
-                            print("Test evaluation method not implemented in GratingClassifier")
-                        else:
-                            print("No test method available in GratingClassifier")
-                            print("Use --grating_test_image to test a single image")
-
-                    print(f"Completed testing for {folder}")
+                        # Run full test suite
+                        results = tester.run_comprehensive_test(test_dir=str(test_dir))
+                        print(f"Comprehensive testing completed for {folder}")
 
                 except Exception as e:
                     print(f"Error testing grating classifier for {folder}: {e}")
+                    import traceback
+                    traceback.print_exc()
             else:
-                print(f"Grating classifier model not found: {model_path}")
+                print(f"Grating classifier model not found for {folder}")
+                print("Expected model files matching pattern: grating_{folder}_*_model.pkl")
                 print("Please train the grating model first using --mode train_grating")
             print("\n")
 
@@ -230,7 +251,6 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 # Train all models including grating classifier
 # python main.py --mode all
 
