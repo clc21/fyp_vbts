@@ -10,37 +10,85 @@ from train.test_shape_classifier import test_shape_classifier
 from train.train_grating import GratingTrainer
 from train.test_grating import GratingTester
 from train.GratingExtractFeature import GratingFeatureExtractor
+from train.train_depth import DepthClassifier
+from train.test_depth import DepthTester
+from train.depthAnalysis import DepthAnalysisUtils
 
 
 def main():
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description='Train and test shape classification and grating models')
+    parser = argparse.ArgumentParser(description='Train and test shape classification, grating, and depth models')
     parser.add_argument('--mode', type=str, default='all',
-                        choices=['all', 'train_shape', 'train_origin', 'test_shape', 'train_grating', 'test_grating'],
-                        help='Mode to run: all, train_shape, train_origin, test_shape, train_grating, or test_grating')
+                        choices=['all', 'train_shape', 'train_origin', 'test_shape', 'train_grating', 'test_grating',
+                                 'train_depth', 'test_depth', 'check_depth', 'setup_depth'],
+                        help='Mode to run: all, train_shape, train_origin, test_shape, train_grating, test_grating, train_depth, test_depth, check_depth, or setup_depth')
     parser.add_argument('--shape_dir', type=str,
                         default="C:/Users/chenc/OneDrive - Imperial College London/Documents/student stuff/fyp_Y4/pics/shape",
                         help='Directory containing shape data (should contain shape_0 and shape_3mm folders)')
     parser.add_argument('--grating_dir', type=str,
                         default="C:/Users/chenc/OneDrive - Imperial College London/Documents/student stuff/fyp_Y4/pics/gratingBoard",
                         help='Directory containing grating board images (should contain grating_0 and grating_3mm folders)')
+    parser.add_argument('--depth_dir', type=str,
+                        default="C:/Users/chenc/OneDrive - Imperial College London/Documents/student stuff/fyp_Y4/pics/depth",
+                        help='Directory containing depth data (should contain flat and curved folders with depth subfolders)')
     parser.add_argument('--max_images_per_folder', type=int, default=100,
                         help='Maximum number of images to load per grating folder')
+    parser.add_argument('--max_depth_images_per_class', type=int, default=50,
+                        help='Maximum number of images to load per depth class')
     parser.add_argument('--test_size', type=float, default=0.2,
                         help='Proportion of data to use for testing (0.0-1.0)')
     parser.add_argument('--grating_test_image', type=str, default=None,
                         help='Path to a single grating image for testing/prediction')
+    parser.add_argument('--depth_test_image', type=str, default=None,
+                        help='Path to a single depth image for testing/prediction')
     parser.add_argument('--grating_folder', type=str, default='both',
                         choices=['grating_0', 'grating_3mm', 'both'],
                         help='Which grating dataset to use: grating_0, grating_3mm, or both')
     parser.add_argument('--shape_folder', type=str, default='both',
                         choices=['shape_0', 'shape_3mm', 'both'],
                         help='Which shape dataset to use: shape_0, shape_3mm, or both')
+    parser.add_argument('--depth_surface', type=str, default='both',
+                        choices=['flat', 'curved', 'both'],
+                        help='Which depth surface to use: flat, curved, or both')
+    parser.add_argument('--depth_epochs', type=int, default=25,
+                        help='Number of epochs for depth model training')
+    parser.add_argument('--depth_batch_size', type=int, default=32,
+                        help='Batch size for depth model training')
+    parser.add_argument('--reference_image', type=str, default=None,
+                        help='Path to reference image for depth analysis')
 
     args = parser.parse_args()
 
     # Check if models directory exists, create if not
     os.makedirs("models", exist_ok=True)
+
+    if args.mode in ['all', 'setup_depth']:
+        print("\n" + "=" * 50)
+        print("Setting up depth analysis environment...")
+        print("=" * 50)
+
+        utils = DepthAnalysisUtils()
+        utils.generate_requirements_file()
+        utils.create_run_script()
+        print("Depth environment setup completed!")
+
+    if args.mode in ['all', 'check_depth']:
+        print("\n" + "=" * 50)
+        print("Checking depth directory structure...")
+        print("=" * 50)
+
+        utils = DepthAnalysisUtils()
+        structure_valid = utils.check_directory_structure(args.depth_dir)
+
+        if structure_valid:
+            print("✅ Directory structure is valid!")
+            # Analyze image properties
+            utils.analyze_image_properties(args.depth_dir)
+            # Create sample visualization
+            utils.visualize_sample_images(args.depth_dir)
+        else:
+            print("❌ Directory structure has issues. Please fix before training.")
+            return
 
     if args.mode in ['all', 'train_shape']:
         print("\n" + "=" * 50)
@@ -244,6 +292,216 @@ def main():
 
         print("Grating classifier testing completed!")
 
+    if args.mode in ['all', 'train_depth']:
+        print("\n" + "=" * 50)
+        print("Running depth classifier training...")
+        print("=" * 50)
+
+        if not os.path.exists(args.depth_dir):
+            print(f"Error: Depth directory not found at {args.depth_dir}")
+            print("Please specify the correct path using --depth_dir")
+        else:
+            # Check directory structure first
+            utils = DepthAnalysisUtils()
+            structure_valid = utils.check_directory_structure(args.depth_dir)
+
+            if not structure_valid:
+                print("❌ Directory structure is invalid. Please fix before training.")
+                return
+
+            # Determine which surfaces to train on
+            surfaces_to_train = []
+            if args.depth_surface == 'both':
+                surfaces_to_train = ['flat', 'curved']
+            else:
+                surfaces_to_train = [args.depth_surface]
+
+            # Train models for each surface type
+            for surface_type in surfaces_to_train:
+                print(f"\n{'=' * 60}")
+                print(f"Training Depth Classifier for {surface_type.upper()} surface")
+                print(f"{'=' * 60}")
+
+                try:
+                    print(f"Training depth classifier on: {args.depth_dir}")
+                    print(f"Surface type: {surface_type}")
+                    print(f"Max images per class: {args.max_depth_images_per_class}")
+                    print(f"Epochs: {args.depth_epochs}")
+                    print(f"Batch size: {args.depth_batch_size}")
+
+                    # Initialize depth classifier
+                    classifier = DepthClassifier(base_path=args.depth_dir)
+
+                    # Load dataset for specific surface
+                    X, y, image_paths = classifier.load_dataset(
+                        max_images_per_class=args.max_depth_images_per_class,
+                        surface_filter=surface_type
+                    )
+
+                    if X is None or len(X) == 0:
+                        print(f"❌ No images found for {surface_type} surface! Please check your directory structure.")
+                        continue
+
+                    # Print dataset statistics
+                    print(f"\nDataset Statistics for {surface_type} surface:")
+                    print(f"Total images: {len(X)}")
+                    print(f"Image shape: {X[0].shape}")
+
+                    import numpy as np
+                    unique, counts = np.unique(y, return_counts=True)
+                    for depth_idx, count in zip(unique, counts):
+                        print(f"  Depth {classifier.depth_labels[depth_idx]}: {count} images")
+
+                    # Use the correct method name from your DepthClassifier
+                    print(f"\nStarting training for {surface_type} surface...")
+                    history = classifier.train_model_robust(
+                        X, y,
+                        test_size=args.test_size,
+                        validation_size=0.2,
+                        epochs=args.depth_epochs,
+                        batch_size=args.depth_batch_size
+                    )
+
+                    if history is None:
+                        print(f"❌ Training failed for {surface_type} surface")
+                        continue
+
+                    # Evaluate on test set using your class's evaluate_model method
+                    if hasattr(classifier, 'X_test') and hasattr(classifier, 'y_test'):
+                        print(f"\nEvaluating {surface_type} surface model on test set...")
+                        accuracy, cm = classifier.evaluate_model()  # Your method doesn't need parameters
+                        if accuracy is not None:
+                            print(f"Final Test Accuracy for {surface_type}: {accuracy:.4f}")
+
+                    # Save model using your class's save_model method
+                    model_filename = f'models/depth_classification_model_{surface_type}.h5'
+                    success = classifier.save_model(model_filename)
+                    if success:
+                        print(f"Model saved as '{model_filename}'")
+                    else:
+                        print(f"Failed to save model as '{model_filename}'")
+
+                    print(f"✅ {surface_type.capitalize()} surface training completed!")
+
+                except Exception as e:
+                    print(f"❌ Error in depth training for {surface_type}: {e}")
+                    import traceback
+                    traceback.print_exc()
+                print("\n")
+
+        print("Depth classifier training completed!")
+
+    if args.mode in ['all', 'test_depth']:
+        print("\n" + "=" * 50)
+        print("Testing depth classifier...")
+        print("=" * 50)
+
+        if not os.path.exists(args.depth_dir):
+            print(f"❌ Depth directory not found at {args.depth_dir}")
+            return
+
+        # Determine which surfaces to test
+        surfaces_to_test = []
+        if args.depth_surface == 'both':
+            surfaces_to_test = ['flat', 'curved']
+        else:
+            surfaces_to_test = [args.depth_surface]
+
+        # Test models for each surface type
+        for surface_type in surfaces_to_test:
+            print(f"\n{'=' * 60}")
+            print(f"Testing Depth Classifier for {surface_type.upper()} surface")
+            print(f"{'=' * 60}")
+
+            # Determine model path
+            model_path = f'models/depth_classification_model_{surface_type}.h5'
+
+            if not os.path.exists(model_path):
+                print(f"❌ Depth classifier model not found: {model_path}")
+                print(f"Please train the depth model for {surface_type} surface first using --mode train_depth")
+                continue
+
+            try:
+                print(f"Testing depth classifier: {model_path}")
+                print(f"Data directory: {args.depth_dir}")
+                print(f"Surface type: {surface_type}")
+
+                # For testing, we'll create a new classifier instance and load the model
+                classifier = DepthClassifier(base_path=args.depth_dir)
+
+                # Load the trained model
+                success = classifier.load_model(model_path)
+                if not success:
+                    print("❌ Cannot proceed without a trained model.")
+                    continue
+
+                # Test single image if provided
+                if args.depth_test_image:
+                    if os.path.exists(args.depth_test_image):
+                        print(f"\nTesting single image on {surface_type} model: {args.depth_test_image}")
+
+                        # Load and preprocess the image
+                        img = classifier.load_and_preprocess_image(args.depth_test_image)
+                        if img is not None:
+                            # Add batch dimension and predict
+                            img_batch = np.expand_dims(img, axis=0)
+                            predictions = classifier.model.predict(img_batch, verbose=0)
+                            predicted_class = np.argmax(predictions[0])
+                            confidence = predictions[0][predicted_class]
+
+                            print(f"Predicted depth: {classifier.depth_labels[predicted_class]}")
+                            print(f"Confidence: {confidence:.4f}")
+                            print(f"All probabilities: {predictions[0]}")
+                        else:
+                            print("❌ Failed to load and preprocess the test image")
+                    else:
+                        print(f"❌ Test image not found: {args.depth_test_image}")
+                    continue
+
+                # Load test dataset for evaluation
+                print(f"\nLoading test dataset for {surface_type} surface...")
+                X_test, y_test, image_paths = classifier.load_dataset(
+                    max_images_per_class=args.max_depth_images_per_class,
+                    surface_filter=surface_type
+                )
+
+                if X_test is None or len(X_test) == 0:
+                    print(f"❌ No test images found for {surface_type} surface! Please check your directory structure.")
+                    continue
+
+                # Print dataset statistics
+                print(f"\nTest Dataset Statistics for {surface_type} surface:")
+                print(f"Total test images: {len(X_test)}")
+                print(f"Image shape: {X_test[0].shape}")
+
+                import numpy as np
+                unique, counts = np.unique(y_test, return_counts=True)
+                for depth_idx, count in zip(unique, counts):
+                    print(f"  Depth {classifier.depth_labels[depth_idx]}: {count} images")
+
+                # Store test data in classifier for evaluation
+                classifier.X_test = X_test
+                classifier.y_test = y_test
+
+                # Run evaluation using your class's method
+                print(f"\nEvaluating model on {len(X_test)} test samples...")
+                accuracy, cm = classifier.evaluate_model()
+
+                if accuracy is not None:
+                    print(f"\n" + "=" * 30)
+                    print(f"{surface_type.upper()} SURFACE EVALUATION COMPLETE")
+                    print("=" * 30)
+                    print(f"Overall Accuracy: {accuracy:.4f}")
+                else:
+                    print("❌ Evaluation failed")
+
+            except Exception as e:
+                print(f"❌ Error in depth testing for {surface_type}: {e}")
+                import traceback
+                traceback.print_exc()
+            print("\n")
+
+        print("Depth classifier testing completed!")
     print("\n" + "=" * 50)
     print("All operations completed!")
     print("=" * 50)
@@ -251,6 +509,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 # Train all models including grating classifier
 # python main.py --mode all
 
