@@ -28,7 +28,7 @@ def run(data_folder="shape_0", epochs=11, samples_per_class=100):
     np.random.seed(seed)
 
     # Configuration
-    base_dir = "C:/Users/chenc/OneDrive - Imperial College London/Documents/student stuff/fyp_Y4/pics/shape"
+    base_dir = ".../pics/shape"
     root_dir = os.path.join(base_dir, data_folder)
 
     if not os.path.exists(root_dir):

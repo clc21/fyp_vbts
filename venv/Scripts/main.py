@@ -23,13 +23,13 @@ def main():
                                  'train_depth', 'test_depth', 'check_depth', 'setup_depth'],
                         help='Mode to run: all, train_shape, train_origin, test_shape, train_grating, test_grating, train_depth, test_depth, check_depth, or setup_depth')
     parser.add_argument('--shape_dir', type=str,
-                        default="C:/Users/chenc/OneDrive - Imperial College London/Documents/student stuff/fyp_Y4/pics/shape",
+                        default=".../pics/shape",
                         help='Directory containing shape data (should contain shape_0 and shape_3mm folders)')
     parser.add_argument('--grating_dir', type=str,
-                        default="C:/Users/chenc/OneDrive - Imperial College London/Documents/student stuff/fyp_Y4/pics/gratingBoard",
+                        default=".../pics/gratingBoard",
                         help='Directory containing grating board images (should contain grating_0 and grating_3mm folders)')
     parser.add_argument('--depth_dir', type=str,
-                        default="C:/Users/chenc/OneDrive - Imperial College London/Documents/student stuff/fyp_Y4/pics/depth",
+                        default=".../pics/depth",
                         help='Directory containing depth data (should contain flat and curved folders with depth subfolders)')
     parser.add_argument('--max_images_per_folder', type=int, default=100,
                         help='Maximum number of images to load per grating folder')

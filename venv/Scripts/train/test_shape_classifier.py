@@ -189,7 +189,7 @@ def test_shape_classifier(model_path, test_data_dir, batch_size=32, data_folder=
 
 if __name__ == "__main__":
     # Test both datasets with 100 samples each
-    base_test_dir = "C:/Users/chenc/OneDrive - Imperial College London/Documents/student stuff/fyp_Y4/pics/shape"
+    base_test_dir = ".../pics/shape"
 
     for folder in ["shape_0", "shape_3mm"]:
         print(f"\n{'=' * 60}")
